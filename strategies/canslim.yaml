@@ -1,0 +1,77 @@
+# CANSLIM Strategy / 欧奈尔 CANSLIM 选股法则
+
+name: canslim
+display_name: 欧奈尔CANSLIM法则
+description: 基于威廉·欧奈尔《笑傲股市》的CANSLIM七维选股体系，适合寻找高成长龙头股。
+category: trend
+core_rules: [1, 2, 3]
+required_tools:
+  - get_daily_history
+  - analyze_trend
+  - get_realtime_quote
+  - search_stock_news
+aliases: [CANSLIM, 欧奈尔, 笑傲股市, 成长股]
+default_active: true
+default_priority: 20
+market_regimes: [trending_up]
+
+instructions: |
+  **欧奈尔 CANSLIM 选股法则**
+
+  来源：威廉·欧奈尔《笑傲股市》，专注寻找"基本面爆发 + 技术面突破"的超级强势股。
+
+  ## CANSLIM 七维分析框架
+
+  ### C — Current Earnings（当季每股盈利）
+  - 当季 EPS 同比增速 ≥ 25%（越高越好，理想 > 50%）
+  - 营收增速同步加速，避免纯成本压缩的利润增长
+  - 使用 `search_stock_news` 查找最新财报数据
+
+  ### A — Annual Earnings（年度盈利增长）
+  - 过去3年年均EPS增速 ≥ 25%
+  - ROE ≥ 17%，连续多年稳定
+  - 净利润增速连续加速为最强信号
+
+  ### N — New（新产品/新管理层/新高价）
+  - 公司有新产品、新业务或行业新催化剂
+  - 股价创出近52周新高（突破盘整区域）
+  - 使用 `search_stock_news` 搜索公司近期重大变化
+
+  ### S — Supply and Demand（供需关系）
+  - 使用 `get_realtime_quote` 检查换手率和量比
+  - 突破时成交量放大 ≥ 150%（与过去50日均量比）
+  - 流通盘适中（A股建议 5-50 亿），大盘股需更大资金推动
+
+  ### L — Leader or Laggard（龙头还是落后股）
+  - 选择板块内相对强度最强的1-2只股票
+  - 避免"补涨股"，坚持买同板块中最强的龙头
+  - 使用 `get_daily_history` 对比个股与指数的相对表现
+
+  ### I — Institutional Sponsorship（机构持仓）
+  - 有知名机构（公募/外资/社保）近期建仓或加仓
+  - 机构数量适中（太多=拥挤，太少=无人关注）
+  - 使用 `search_stock_news` 查找机构调研和持仓变化
+
+  ### M — Market Direction（大盘方向）
+  - 大盘处于上升趋势时胜率最高（跟随市场，不逆势操作）
+  - 大盘调整期减少操作，等待确认企稳再介入
+  - 使用 `analyze_trend` 判断指数趋势
+
+  ## 买入规则
+  - 股价从整理区域向上突破（杯柄形态、平底突破）
+  - 突破当日或次日量能放大确认
+  - 突破价位上方 5% 内介入，超过则等下一次整理
+
+  ## 止损规则
+  - 从买入价下跌 7-8% 无条件止损（欧奈尔铁律）
+  - 跌回突破点以下立即止损
+
+  ## 卖出规则
+  - 上涨 20-25% 后考虑获利了结（除非基本面极强）
+  - 出现"顶部量能异常放大但股价不涨"卖出信号
+
+  评分调整建议：
+  - EPS增速 > 50% + 突破新高 + 放量：`sentiment_score +15`
+  - 符合5个以上维度：`sentiment_score +10`
+  - 大盘趋势向上共振：额外 `+5`
+  - 跌破突破点或止损线：`sentiment_score -15`

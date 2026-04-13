@@ -624,6 +624,30 @@ class LLMUsage(Base):
     called_at = Column(DateTime, default=datetime.now, index=True)
 
 
+class PredictionRun(Base):
+    """一次 AI 预测任务的完整记录（含所有逐日结果）。"""
+
+    __tablename__ = 'prediction_runs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    code = Column(String(10), nullable=False, index=True)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False)
+    skill_id = Column(String(64))
+    skill_name = Column(String(128))
+    lookback_days = Column(Integer, default=60)
+    total = Column(Integer, default=0)
+    completed = Column(Integer, default=0)
+    with_actual = Column(Integer, default=0)
+    accuracy_pct = Column(Float)
+    items_json = Column(Text)  # JSON array of PredictionItem dicts
+    created_at = Column(DateTime, default=datetime.now, index=True)
+
+    __table_args__ = (
+        Index('ix_prediction_runs_code_created', 'code', 'created_at'),
+    )
+
+
 class DatabaseManager:
     """
     数据库管理器 - 单例模式
