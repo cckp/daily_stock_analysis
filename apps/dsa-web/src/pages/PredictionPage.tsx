@@ -430,7 +430,7 @@ const PredictionPage: React.FC = () => {
   const [runError, setRunError] = useState<ParsedApiError | null>(null);
   const [historyKey, setHistoryKey] = useState(0);
   const [jobs, setJobs] = useState<JobInfo[]>([]);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<number | null>(null);
 
   // Load skills on mount
   useEffect(() => {
