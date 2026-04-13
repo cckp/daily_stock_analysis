@@ -89,6 +89,28 @@ export const predictionApi = {
   },
 
   /**
+   * List all async jobs
+   */
+  listJobs: async (): Promise<JobInfo[]> => {
+    const response = await apiClient.get<{ jobs: Record<string, unknown>[] }>(
+      '/api/v1/prediction/jobs',
+    );
+    return (response.data.jobs || []).map((job) => {
+      const data = toCamelCase<JobInfo>(job);
+      if (data.result) {
+        const r = data.result as unknown as Record<string, unknown>;
+        data.result = {
+          ...(toCamelCase<PredictionRunResponse>(r)),
+          items: ((r.items as unknown[]) || []).map((item) =>
+            toCamelCase(item as Record<string, unknown>),
+          ),
+        } as PredictionRunResponse;
+      }
+      return data;
+    });
+  },
+
+  /**
    * Poll async job status; result is nested when done
    */
   getJobStatus: async (jobId: string): Promise<JobInfo> => {

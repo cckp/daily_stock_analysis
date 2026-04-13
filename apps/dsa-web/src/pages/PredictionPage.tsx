@@ -432,9 +432,10 @@ const PredictionPage: React.FC = () => {
   const [jobs, setJobs] = useState<JobInfo[]>([]);
   const pollingIntervalRef = useRef<number | null>(null);
 
-  // Load skills on mount
+  // Load skills and jobs on mount
   useEffect(() => {
     predictionApi.getSkills().then(setSkills).catch(() => {});
+    predictionApi.listJobs().then(setJobs).catch(() => {});
   }, []);
 
   // Poll running jobs

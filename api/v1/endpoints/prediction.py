@@ -180,6 +180,46 @@ def run_prediction_async(request: PredictionRunRequest) -> dict:
 
 
 @router.get(
+    "/jobs",
+    summary="获取所有异步预测任务列表",
+)
+def list_jobs() -> dict:
+    with _jobs_lock:
+        job_list = []
+        for jid, job_data in _jobs.items():
+            job_info = {
+                "job_id": jid,
+                "status": job_data["status"],
+                "code": job_data["code"],
+                "stock_name": job_data["stock_name"],
+                "start_date": job_data["start_date"],
+                "end_date": job_data["end_date"],
+                "skill_id": job_data.get("skill_id"),
+                "skill_name": job_data.get("skill_name"),
+                "error": job_data.get("error"),
+            }
+            if job_data["status"] == "done" and job_data["result"]:
+                result = job_data["result"]
+                job_info["result"] = {
+                    "run_id": result.get("run_id"),
+                    "code": result["code"],
+                    "stock_name": result.get("stock_name"),
+                    "skill_id": result.get("skill_id"),
+                    "skill_name": result.get("skill_name"),
+                    "start_date": result["start_date"],
+                    "end_date": result["end_date"],
+                    "lookback_days": result["lookback_days"],
+                    "total": result["total"],
+                    "completed": result["completed"],
+                    "with_actual": result["with_actual"],
+                    "accuracy_pct": result.get("accuracy_pct"),
+                    "items": result.get("items", []),
+                }
+            job_list.append(job_info)
+        return {"jobs": job_list}
+
+
+@router.get(
     "/jobs/{job_id}",
     summary="查询异步预测任务状态",
 )
