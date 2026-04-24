@@ -6,6 +6,12 @@ import type {
   DiscoverLLMChannelModelsResponse,
   ExportSystemConfigResponse,
   ImportSystemConfigRequest,
+  SchedulerStatusResponse,
+  SchedulerTaskConfig,
+  SchedulerTaskConfigUpdateRequest,
+  SchedulerTaskRun,
+  SchedulerTaskRunListResponse,
+  TriggerRunResponse,
   SystemConfigConflictResponse,
   SystemConfigResponse,
   SystemConfigSchemaResponse,
@@ -156,6 +162,49 @@ export const systemConfigApi = {
       toSnakeDiscoverModelsPayload(payload),
     );
     return toCamelCase<DiscoverLLMChannelModelsResponse>(response.data);
+  },
+
+  async getSchedulerStatus(): Promise<SchedulerStatusResponse> {
+    const response = await apiClient.get<Record<string, unknown>>('/api/v1/system/scheduler');
+    return toCamelCase<SchedulerStatusResponse>(response.data);
+  },
+
+  // ── DB-backed scheduler APIs ────────────────────────────────────────────────
+
+  async listSchedulerTasks(): Promise<SchedulerTaskConfig[]> {
+    const response = await apiClient.get<{ items: Record<string, unknown>[] }>('/api/v1/scheduler/tasks');
+    return (response.data.items || []).map((item) => toCamelCase<SchedulerTaskConfig>(item));
+  },
+
+  async updateSchedulerTask(taskKey: string, updates: SchedulerTaskConfigUpdateRequest): Promise<SchedulerTaskConfig> {
+    const body: Record<string, unknown> = {};
+    if (updates.name != null) body.name = updates.name;
+    if (updates.description != null) body.description = updates.description;
+    if (updates.scheduleTime != null) body.schedule_time = updates.scheduleTime;
+    if (updates.intervalSeconds != null) body.interval_seconds = updates.intervalSeconds;
+    if (updates.enabled != null) body.enabled = updates.enabled;
+    const response = await apiClient.put<Record<string, unknown>>(`/api/v1/scheduler/tasks/${taskKey}`, body);
+    return toCamelCase<SchedulerTaskConfig>(response.data);
+  },
+
+  async triggerSchedulerTask(taskKey: string): Promise<TriggerRunResponse> {
+    const response = await apiClient.post<Record<string, unknown>>(
+      `/api/v1/scheduler/tasks/${taskKey}/run`,
+    );
+    return toCamelCase<TriggerRunResponse>(response.data);
+  },
+
+  async listSchedulerRuns(params?: { taskKey?: string; offset?: number; limit?: number }): Promise<SchedulerTaskRunListResponse> {
+    const query = new URLSearchParams();
+    if (params?.taskKey) query.set('task_key', params.taskKey);
+    if (params?.offset != null) query.set('offset', String(params.offset));
+    if (params?.limit != null) query.set('limit', String(params.limit));
+    const response = await apiClient.get<Record<string, unknown>>(`/api/v1/scheduler/runs?${query.toString()}`);
+    const data = toCamelCase<SchedulerTaskRunListResponse>(response.data);
+    return {
+      ...data,
+      items: (data.items || []).map((item) => toCamelCase<SchedulerTaskRun>(item as unknown as Record<string, unknown>)),
+    };
   },
 
   async update(payload: UpdateSystemConfigRequest): Promise<UpdateSystemConfigResponse> {

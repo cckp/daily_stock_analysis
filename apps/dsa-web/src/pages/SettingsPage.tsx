@@ -9,6 +9,7 @@ import {
   ChangePasswordCard,
   IntelligentImport,
   LLMChannelEditor,
+  SchedulerCard,
   SettingsCategoryNav,
   SettingsAlert,
   SettingsField,
@@ -284,6 +285,7 @@ const SettingsPage: React.FC = () => {
 
           <section className="space-y-4">
             {activeCategory === 'system' ? <AuthSettingsCard /> : null}
+            {activeCategory === 'system' ? <SchedulerCard /> : null}
             {activeCategory === 'system' ? (
               <SettingsSectionCard
                 title="版本信息"

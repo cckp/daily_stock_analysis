@@ -9,6 +9,8 @@ import NotFoundPage from './pages/NotFoundPage';
 import ChatPage from './pages/ChatPage';
 import PortfolioPage from './pages/PortfolioPage';
 import PredictionPage from './pages/PredictionPage';
+import ScheduledTasksPage from './pages/ScheduledTasksPage';
+import AITasksPage from './pages/AITasksPage';
 import { ApiErrorAlert, Shell } from './components/common';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAgentChatStore } from './stores/agentChatStore';
@@ -67,6 +69,8 @@ const AppContent: React.FC = () => {
         <Route path="/portfolio" element={<PortfolioPage />} />
         <Route path="/backtest" element={<BacktestPage />} />
         <Route path="/prediction" element={<PredictionPage />} />
+        <Route path="/scheduled-tasks" element={<ScheduledTasksPage />} />
+        <Route path="/ai-tasks" element={<AITasksPage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

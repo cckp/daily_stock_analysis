@@ -1,3 +1,70 @@
+export interface SchedulerTaskInfo {
+  name: string;
+  type: 'daily' | 'background';
+  scheduleTime?: string;
+  intervalSeconds?: number;
+  enabled: boolean;
+}
+
+export interface SchedulerStatusResponse {
+  scheduleEnabled: boolean;
+  runImmediately: boolean;
+  tasks: SchedulerTaskInfo[];
+}
+
+// ── Persistent scheduler models (DB-backed) ──────────────────────────────────
+
+export interface SchedulerTaskConfig {
+  id: number;
+  taskKey: string;
+  name: string;
+  description?: string;
+  taskType: 'daily' | 'interval';
+  scheduleTime?: string;
+  intervalSeconds?: number;
+  enabled: boolean;
+  nextRun?: string;
+  isRunning: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SchedulerTaskConfigUpdateRequest {
+  name?: string;
+  description?: string;
+  scheduleTime?: string;
+  intervalSeconds?: number;
+  enabled?: boolean;
+}
+
+export interface SchedulerTaskRun {
+  id: number;
+  taskKey: string;
+  taskName?: string;
+  startedAt: string;
+  finishedAt?: string;
+  durationSeconds?: number;
+  status: 'running' | 'success' | 'error';
+  triggeredBy?: string;
+  errorMsg?: string;
+}
+
+export interface SchedulerTaskRunListResponse {
+  items: SchedulerTaskRun[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+export interface TriggerRunResponse {
+  runId: number;
+  taskKey: string;
+  taskName?: string;
+  startedAt: string;
+  status: string;
+  message: string;
+}
+
 export type SystemConfigCategory =
   | 'base'
   | 'data_source'

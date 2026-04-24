@@ -648,6 +648,58 @@ class PredictionRun(Base):
     )
 
 
+class SchedulerTaskConfig(Base):
+    """定时任务配置表 — 存储各任务参数，支持 Web UI 管理。"""
+
+    __tablename__ = 'scheduler_task_configs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_key = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(128), nullable=False)
+    description = Column(Text)
+    task_type = Column(String(16), nullable=False, default='daily')  # "daily" | "interval"
+    schedule_time = Column(String(8))     # "HH:MM"，daily 任务专用
+    interval_seconds = Column(Integer)    # interval 任务专用
+    enabled = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class SchedulerTaskRun(Base):
+    """定时任务执行记录 — 每次执行的完整历史。"""
+
+    __tablename__ = 'scheduler_task_runs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_key = Column(String(64), nullable=False, index=True)
+    task_name = Column(String(128))
+    started_at = Column(DateTime, nullable=False, index=True)
+    finished_at = Column(DateTime)
+    duration_seconds = Column(Float)
+    status = Column(String(16), nullable=False, default='running')  # "running"|"success"|"error"
+    triggered_by = Column(String(32), default='scheduler')          # "scheduler"|"manual"
+    error_msg = Column(Text)
+
+
+class AIScheduledTask(Base):
+    """AI 智能定时任务 — 用户通过自然语言描述，由 AI Agent 自动执行。"""
+
+    __tablename__ = 'ai_scheduled_tasks'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_key = Column(String(64), nullable=False, unique=True, index=True)
+    name = Column(String(128), nullable=False)
+    description = Column(Text)              # 可选的 UI 备注
+    prompt = Column(Text, nullable=False)   # 自然语言任务描述（Agent 执行的输入）
+    task_type = Column(String(16), nullable=False, default='daily')  # "daily" | "interval"
+    schedule_time = Column(String(8))       # "HH:MM"，daily 任务专用
+    interval_seconds = Column(Integer)      # interval 任务专用
+    enabled = Column(Boolean, nullable=False, default=True)
+    notify_on_finish = Column(Boolean, nullable=False, default=True)  # 执行完成后推送结果到配置的渠道
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class DatabaseManager:
     """
     数据库管理器 - 单例模式
@@ -725,6 +777,11 @@ class DatabaseManager:
     @classmethod
     def get_instance(cls) -> 'DatabaseManager':
         """获取单例实例"""
+        # If __new__ ran but __init__ failed (e.g. bad DB URL), _instance is
+        # non-None yet _initialized is False.  Reset so cls() creates a fresh
+        # object instead of returning the broken one.
+        if cls._instance is not None and not getattr(cls._instance, '_initialized', False):
+            cls._instance = None
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance

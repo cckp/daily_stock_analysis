@@ -38,6 +38,17 @@ from src.services.system_config_service import SystemConfigService
 async def app_lifespan(app: FastAPI):
     """Initialize and release shared services for the app lifecycle."""
     app.state.system_config_service = SystemConfigService()
+
+    # Start AI task background scheduler
+    try:
+        from src.ai_task_scheduler import get_ai_task_scheduler
+        ai_scheduler = get_ai_task_scheduler()
+        ai_scheduler.load_all_enabled()
+        ai_scheduler.start()
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning("AI 任务调度器启动失败（已忽略）: %s", _exc)
+
     try:
         yield
     finally:

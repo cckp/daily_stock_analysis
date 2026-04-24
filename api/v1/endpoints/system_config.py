@@ -38,6 +38,28 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+# ---------------------------------------------------------------------------
+# Scheduler task info
+# ---------------------------------------------------------------------------
+
+from typing import List, Optional as _Optional
+from pydantic import BaseModel as _BaseModel
+
+
+class SchedulerTaskInfo(_BaseModel):
+    name: str
+    type: str  # "daily" | "background"
+    schedule_time: _Optional[str] = None  # for daily tasks, e.g. "18:00"
+    interval_seconds: _Optional[int] = None  # for background tasks
+    enabled: bool
+
+
+class SchedulerStatusResponse(_BaseModel):
+    schedule_enabled: bool
+    run_immediately: bool
+    tasks: List[SchedulerTaskInfo]
+
+
 def _ensure_desktop_mode() -> None:
     """Restrict desktop backup/restore endpoints to desktop runtime only."""
     if os.getenv("DSA_DESKTOP_MODE", "").strip().lower() != "true":
@@ -355,6 +377,64 @@ def discover_llm_channel_models(
             detail={
                 "error": "internal_error",
                 "message": "Failed to discover LLM channel models",
+            },
+        )
+
+
+@router.get(
+    "/scheduler",
+    response_model=SchedulerStatusResponse,
+    responses={
+        200: {"description": "Scheduler tasks loaded"},
+        500: {"description": "Internal server error", "model": ErrorResponse},
+    },
+    summary="Get scheduler task info",
+    description="Return configured scheduled tasks derived from current system config.",
+)
+def get_scheduler_status() -> SchedulerStatusResponse:
+    """Read scheduler config and return task list."""
+    try:
+        from src.config import get_config
+        from src.core.config_manager import ConfigManager
+
+        config = get_config()
+        schedule_enabled = getattr(config, "schedule_enabled", False)
+        run_immediately = getattr(config, "schedule_run_immediately", True)
+        schedule_time = getattr(config, "schedule_time", "18:00") or "18:00"
+        agent_monitor_enabled = getattr(config, "agent_event_monitor_enabled", False)
+        agent_monitor_interval = getattr(config, "agent_event_monitor_interval_minutes", 5)
+
+        tasks: List[SchedulerTaskInfo] = []
+
+        # Daily stock analysis task
+        tasks.append(SchedulerTaskInfo(
+            name="每日股票分析",
+            type="daily",
+            schedule_time=schedule_time,
+            enabled=schedule_enabled,
+        ))
+
+        # Background event monitor task (only registered when schedule mode is active)
+        if agent_monitor_enabled:
+            tasks.append(SchedulerTaskInfo(
+                name="智能事件监控",
+                type="background",
+                interval_seconds=agent_monitor_interval * 60,
+                enabled=schedule_enabled and agent_monitor_enabled,
+            ))
+
+        return SchedulerStatusResponse(
+            schedule_enabled=schedule_enabled,
+            run_immediately=run_immediately,
+            tasks=tasks,
+        )
+    except Exception as exc:
+        logger.error("Failed to load scheduler status: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "error": "internal_error",
+                "message": "Failed to load scheduler status",
             },
         )
 

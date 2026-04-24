@@ -23,6 +23,24 @@ from typing import Any, Callable, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# ── 进程内全局注册表：供 API 层读取运行时状态 ───────────────────────────────
+# {task_key: {"next_run": datetime | None, "is_running": bool}}
+_scheduler_registry: Dict[str, Dict[str, Any]] = {}
+_registry_lock = threading.Lock()
+
+
+def get_scheduler_registry() -> Dict[str, Dict[str, Any]]:
+    """返回当前调度器注册表的快照（供 API 端点读取）。"""
+    with _registry_lock:
+        return {k: dict(v) for k, v in _scheduler_registry.items()}
+
+
+def _registry_set(task_key: str, **kwargs: Any) -> None:
+    with _registry_lock:
+        if task_key not in _scheduler_registry:
+            _scheduler_registry[task_key] = {"next_run": None, "is_running": False}
+        _scheduler_registry[task_key].update(kwargs)
+
 
 class GracefulShutdown:
     """
@@ -67,12 +85,16 @@ class Scheduler:
         self,
         schedule_time: str = "18:00",
         schedule_time_provider: Optional[Callable[[], str]] = None,
+        task_key: str = "daily_analysis",
+        task_name: str = "每日股票分析",
     ):
         """
         初始化调度器
 
         Args:
             schedule_time: 每日执行时间，格式 "HH:MM"
+            task_key: 主任务的唯一标识（写入 DB）
+            task_name: 主任务的显示名称
         """
         try:
             import schedule
@@ -88,6 +110,60 @@ class Scheduler:
         self._daily_job: Optional[Any] = None
         self._background_tasks: List[Dict[str, Any]] = []
         self._running = False
+        self._task_key = task_key
+        self._task_name = task_name
+
+        # 初始化注册表条目
+        _registry_set(task_key, next_run=None, is_running=False)
+
+        # 持久化任务配置（非阻塞，失败不影响调度器启动）
+        self._seed_task_config()
+
+    # ------------------------------------------------------------------ #
+    # DB helpers                                                           #
+    # ------------------------------------------------------------------ #
+
+    def _seed_task_config(self) -> None:
+        """向 DB 写入（或更新）本任务的配置行。"""
+        try:
+            from src.repositories.scheduler_repo import SchedulerRepository
+            repo = SchedulerRepository()
+            repo.upsert_task_config(
+                task_key=self._task_key,
+                name=self._task_name,
+                task_type="daily",
+                description="每日自动执行股票分析与大盘复盘",
+                schedule_time=self.schedule_time,
+                enabled=True,
+            )
+        except Exception as exc:
+            logger.debug("[Scheduler] 写入任务配置失败（已忽略）: %s", exc)
+
+    def _db_start_run(self, task_key: str, task_name: str, triggered_by: str = "scheduler") -> Optional[int]:
+        """向 DB 写入一条「运行中」记录，返回 run_id。"""
+        try:
+            from src.repositories.scheduler_repo import SchedulerRepository
+            run = SchedulerRepository().start_run(
+                task_key=task_key,
+                task_name=task_name,
+                triggered_by=triggered_by,
+            )
+            return run.id
+        except Exception as exc:
+            logger.debug("[Scheduler] 写入任务开始记录失败（已忽略）: %s", exc)
+            return None
+
+    def _db_finish_run(self, run_id: Optional[int], status: str, error_msg: Optional[str] = None) -> None:
+        """更新 DB 中的运行记录为完成状态。"""
+        if run_id is None:
+            return
+        try:
+            from src.repositories.scheduler_repo import SchedulerRepository
+            SchedulerRepository().finish_run(run_id, status=status, error_msg=error_msg)
+        except Exception as exc:
+            logger.debug("[Scheduler] 更新任务完成记录失败（已忽略）: %s", exc)
+
+    # ------------------------------------------------------------------ #
 
     def set_daily_task(self, task: Callable, run_immediately: bool = True):
         """
@@ -151,6 +227,19 @@ class Scheduler:
                 previous_time,
                 self.schedule_time,
             )
+
+        # 更新注册表中的下次执行时间
+        _registry_set(self._task_key, next_run=getattr(self._daily_job, "next_run", None))
+
+        # 同步更新 DB 中的 schedule_time（非阻塞）
+        try:
+            from src.repositories.scheduler_repo import SchedulerRepository
+            SchedulerRepository().update_task_config(
+                self._task_key, {"schedule_time": candidate}
+            )
+        except Exception:
+            pass
+
         return True
 
     def _refresh_daily_schedule_if_needed(self) -> None:
@@ -171,9 +260,12 @@ class Scheduler:
             logger.info("更新后的下次执行时间: %s", self._get_next_run_time())
 
     def _safe_run_task(self):
-        """安全执行任务（带异常捕获）"""
+        """安全执行任务（带异常捕获 + DB 记录）"""
         if self._task_callback is None:
             return
+
+        _registry_set(self._task_key, is_running=True)
+        run_id = self._db_start_run(self._task_key, self._task_name)
 
         try:
             logger.info("=" * 50)
@@ -183,9 +275,18 @@ class Scheduler:
             self._task_callback()
 
             logger.info(f"定时任务执行完成 - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            self._db_finish_run(run_id, status="success")
 
         except Exception as e:
             logger.exception(f"定时任务执行失败: {e}")
+            self._db_finish_run(run_id, status="error", error_msg=str(e))
+
+        finally:
+            _registry_set(
+                self._task_key,
+                is_running=False,
+                next_run=getattr(self._daily_job, "next_run", None) if self._daily_job else None,
+            )
 
     def add_background_task(
         self,
@@ -206,14 +307,31 @@ class Scheduler:
                 name or getattr(task, "__name__", "background_task"),
                 interval_seconds,
             )
+        task_name = name or getattr(task, "__name__", "background_task")
+        task_key = f"bg_{task_name}"
         entry = {
             "task": task,
             "interval_seconds": clamped_interval,
             "last_run": 0.0,
-            "name": name or getattr(task, "__name__", "background_task"),
+            "name": task_name,
+            "task_key": task_key,
             "thread": None,
             "running": False,
         }
+
+        # 初始化注册表 + 持久化配置
+        _registry_set(task_key, next_run=None, is_running=False)
+        try:
+            from src.repositories.scheduler_repo import SchedulerRepository
+            SchedulerRepository().upsert_task_config(
+                task_key=task_key,
+                name=task_name,
+                task_type="interval",
+                interval_seconds=clamped_interval,
+                enabled=True,
+            )
+        except Exception:
+            pass
         if not run_immediately:
             entry["last_run"] = time.time()
         self._background_tasks.append(entry)
@@ -232,15 +350,22 @@ class Scheduler:
         if worker is not None and worker.is_alive():
             return False
 
+        bg_task_key = entry.get("task_key", f"bg_{entry['name']}")
+        run_id = self._db_start_run(bg_task_key, entry["name"])
+        _registry_set(bg_task_key, is_running=True)
+
         def _runner() -> None:
             try:
                 logger.info("后台任务开始执行: %s", entry["name"])
                 entry["task"]()
+                self._db_finish_run(run_id, status="success")
             except Exception as exc:
                 logger.exception("后台任务执行失败 [%s]: %s", entry["name"], exc)
+                self._db_finish_run(run_id, status="error", error_msg=str(exc))
             finally:
                 entry["running"] = False
                 entry["thread"] = None
+                _registry_set(bg_task_key, is_running=False)
 
         entry["last_run"] = time.time()
         entry["running"] = True
